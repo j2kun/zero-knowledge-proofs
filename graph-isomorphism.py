@@ -25,11 +25,15 @@ def randomPermutation(n):
 
 
 def makePermutationFunction(L):
-    return lambda i: L[i]
+    return lambda i: L[i - 1] + 1
 
 
 def makeInversePermutationFunction(L):
-    return lambda i: L.index(i)
+    return lambda i: 1 + L.index(i - 1)
+
+
+def applyIsomorphism(G, f):
+    return [(f(i), f(j)) for (i, j) in G]
 
 
 class Prover(object):
@@ -50,7 +54,7 @@ class Prover(object):
         isomorphism = randomPermutation(self.n)
         pi = makePermutationFunction(isomorphism)
 
-        H = [(pi(i), pi(j)) for (i, j) in self.G1]
+        H = applyIsomorphism(self.G1, pi)
 
         self.state = isomorphism
         return H
@@ -74,7 +78,7 @@ class Verifier(object):
         assert self.n == numVertices(G2)
 
     def chooseGraph(self, H):
-        choice = random.choice(1, 2)
+        choice = random.choice([1, 2])
         self.state = H, choice
         return choice
 
@@ -89,7 +93,7 @@ class Verifier(object):
         graphToCheck = [self.G1, self.G2][choice - 1]
         f = isomorphism
 
-        isValidIsomorphism = (graphToCheck == [(f(i), f(j)) for (i, j) in H])
+        isValidIsomorphism = (graphToCheck == applyIsomorphism(H, f))
         return isValidIsomorphism
 
 
@@ -102,3 +106,28 @@ def runProtocol(G1, G2, isomorphism):
     witnessIsomorphism = p.proveIsomorphicTo(choice)
 
     return v.accepts(witnessIsomorphism)
+
+
+def convinceBeyondDoubt(G1, G2, isomorphism, errorTolerance=1e-20):
+    probabilityFooled = 1
+
+    while probabilityFooled > errorTolerance:
+        result = runProtocol(G1, G2, isomorphism)
+        assert result
+        probabilityFooled *= 0.5
+        print(probabilityFooled)
+
+
+if __name__ == "__main__":
+    G1 = exampleGraph
+    n = numVertices(G1)
+    p = randomPermutation(n)
+
+    f = makePermutationFunction(p)
+    finv = makeInversePermutationFunction(p)
+    G2 = applyIsomorphism(G1, f)
+
+    assert applyIsomorphism(G1, f) == G2
+    assert applyIsomorphism(G2, finv) == G1
+
+    convinceBeyondDoubt(G1, G2, p)
