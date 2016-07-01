@@ -17,7 +17,6 @@ def numVertices(G):
     return max(v for e in G for v in e)
 
 
-# randomPermutation: int -> (int -> int)
 def randomPermutation(n):
     L = list(range(n))
     random.shuffle(L)
@@ -116,6 +115,31 @@ def convinceBeyondDoubt(G1, G2, isomorphism, errorTolerance=1e-20):
         assert result
         probabilityFooled *= 0.5
         print(probabilityFooled)
+
+
+def messagesFromProtocol(G1, G2, isomorphism):
+    p = Prover(G1, G2, isomorphism)
+    v = Verifier(G1, G2)
+
+    H = p.sendIsomorphicCopy()
+    choice = v.chooseGraph(H)
+    witnessIsomorphism = p.proveIsomorphicTo(choice)
+
+    return [H, choice, witnessIsomorphism]
+
+
+def simulateProtocol(G1, G2):
+    # Construct data drawn from the same distribution as what is
+    # returned by messagesFromProtocol
+    choice = random.choice([1, 2])
+    G = [G1, G2][choice - 1]
+    n = numVertices(G)
+
+    isomorphism = randomPermutation(n)
+    pi = makePermutationFunction(isomorphism)
+    H = applyIsomorphism(G, pi)
+
+    return H, choice, pi
 
 
 if __name__ == "__main__":
