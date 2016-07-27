@@ -48,11 +48,10 @@ class Prover(object):
     def __init__(self, graph, coloring, oneWayPermutation=ONE_WAY_PERMUTATION, hardcorePredicate=HARDCORE_PREDICATE):
         self.graph = [tuple(sorted(e)) for e in graph]
         self.coloring = coloring
-        self.vertices = list(range(numVertices(graph)))
+        self.vertices = list(range(1, numVertices(graph) + 1))
         self.oneWayPermutation = oneWayPermutation
         self.hardcorePredicate = hardcorePredicate
-        self.colorSchemes = None
-        self.permutedColoring = None
+        self.vertexToScheme = None
 
     def commitToColoring(self):
         self.vertexToScheme = {
@@ -62,11 +61,11 @@ class Prover(object):
         }
 
         permutation = randomPermutation(3)
-        self.permutedColoring = {
+        permutedColoring = {
             v: permutation[self.coloring[v]] for v in self.vertices
         }
 
-        return {v: s.commit(self.permutedColoring[v])
+        return {v: s.commit(permutedColoring[v])
                 for (v, s) in self.vertexToScheme.items()}
 
     def revealColors(self, u, v):
@@ -75,8 +74,8 @@ class Prover(object):
             raise Exception('Must query an edge!')
 
         return (
-            (self.permutedColoring[u], self.vertexToScheme[u].reveal()),
-            (self.permutedColoring[v], self.vertexToScheme[v].reveal()),
+            self.vertexToScheme[u].reveal(),
+            self.vertexToScheme[v].reveal(),
         )
 
 
@@ -85,27 +84,50 @@ class Verifier(object):
         self.graph = [tuple(sorted(e)) for e in graph]
         self.oneWayPermutation = oneWayPermutation
         self.hardcorePredicate = hardcorePredicate
-        self.promisedColoring = None
+        self.committedColoring = None
+        self.verifier = commitment.BBSIntCommitmentVerifier(2, oneWayPermutation, hardcorePredicate)
 
-    def chooseEdge(self, commitedColoring):
-        self.commitedColoring = commitedColoring
+    def chooseEdge(self, committedColoring):
+        self.committedColoring = committedColoring
         self.chosenEdge = random.choice(self.graph)
         return self.chosenEdge
 
     def accepts(self, revealed):
-        verifier = commitment.BBSIntCommitmentVerifier(2, self.oneWayPermutation, self.hardcorePredicate)
         revealedColors = []
 
-        for (w, (trueColor, bitSecrets)) in zip(self.chosenEdge, revealed):
+        for (w, bitSecrets) in zip(self.chosenEdge, revealed):
+            trueColor = self.verifier.decode(bitSecrets, self.committedColoring[w])
             revealedColors.append(trueColor)
-            if not verifier.verify(trueColor, bitSecrets, self.commitedColoring[w]):
+            if not self.verifier.verify(bitSecrets, self.committedColoring[w]):
                 return False
 
-        if revealedColors[0] != revealedColors[1]:
-            return False
-
-        return True
+        return revealedColors[0] != revealedColors[1]
 
 
-def runProtocol(G1, coloring):
-    pass
+def runProtocol(G, coloring, securityParameter=512):
+    oneWayPermutation = blum_blum_shub.blum_blum_shub(securityParameter)
+    hardcorePredicate = blum_blum_shub.parity
+
+    prover = Prover(G, coloring, oneWayPermutation, hardcorePredicate)
+    verifier = Verifier(G, oneWayPermutation, hardcorePredicate)
+
+    committedColoring = prover.commitToColoring()
+    chosenEdge = verifier.chooseEdge(committedColoring)
+
+    revealed = prover.revealColors(*chosenEdge)
+    revealedColors = (
+        verifier.verifier.decode(revealed[0], committedColoring[chosenEdge[0]]),
+        verifier.verifier.decode(revealed[1], committedColoring[chosenEdge[1]]),
+    )
+    isValid = verifier.accepts(revealed)
+
+    print("{} != {} and commitment is valid? {}".format(
+        revealedColors[0], revealedColors[1], isValid
+    ))
+
+    return isValid
+
+
+if __name__ == "__main__":
+    for _ in range(30):
+        runProtocol(exampleGraph, exampleColoring, securityParameter=10)
